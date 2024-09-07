@@ -1,34 +1,40 @@
-import os
-from fastapi import FastAPI, HTTPException
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-load_dotenv()
+from app.db import database
+from app.db.database import SessionLocal
+from . import model, crud
 
+# Initialize the app
 app = FastAPI()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Create database tables
+model.Base.metadata.create_all(bind=database.engine)
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-@app.get("/")
-
-def read_root():
-    return {"Hello": "World"}
-
-@app.get("/health")
-def health_check():
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
     try:
-        # Attempt to fetch data from a table named 'test_table'
-        response = supabase.table("products").select("*").execute()
-        return response.data
-        # log the response
-        return {"status": "success", "message": "Successfully connected to Supabase"}
-  
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        yield db
+    finally:
+        db.close()
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="localhost", port=4820)
+# Create a product
+@app.post("/products/")
+def create_product(name: str, description: str, price: float, stock_quantity: int, category_id: int, db: Session = Depends(database.get_db)):
+    return crud.create_product(db=db, name=name, description=description, price=price, stock_quantity=stock_quantity, category_id=category_id)
+
+# Read all products
+@app.get("/products/")
+def read_products(db: Session = Depends(database.get_db)):
+    return crud.get_products(db=db)
+
+# Update a product
+@app.put("/products/{product_id}")
+def update_product(product_id: int, name: str, description: str, price: float, stock_quantity: int, db: Session = Depends(database.get_db)):
+    return crud.update_product(db=db, product_id=product_id, name=name, description=description, price=price, stock_quantity=stock_quantity)
+
+# Delete a product
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int, db: Session = Depends(database.get_db)):
+    return crud.delete_product(db=db, product_id=product_id)
